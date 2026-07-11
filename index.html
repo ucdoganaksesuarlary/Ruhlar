@@ -3,34 +3,149 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aman'yň kömekçisi Chatbot</title>
+    <title>Aman'yň AI Kömekçisi</title>
     <style>
-        body { font-family: Arial, sans-serif; background-color: #f7f7f7; margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; height: 100vh; }
-        .chat-container { width: 400px; background-color: #fff; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); display: flex; flex-direction: column; height: 500px; }
-        .chat-header { background-color: #4CAF50; color: white; padding: 15px; text-align: center; border-top-left-radius: 8px; border-top-right-radius: 8px; }
-        .chat-history { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; }
-        .message { margin-bottom: 15px; padding: 10px; border-radius: 5px; max-width: 75%; }
-        .bot { background-color: #e1ffc7; align-self: flex-start; }
-        .user { background-color: #d1e7dd; align-self: flex-end; }
-        .chat-input { padding: 15px; border-top: 1px solid #ccc; display: flex; }
-        input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
-        button { padding: 10px 15px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; margin-left: 10px; cursor: pointer; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #e5ddd5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .chat-container { width: 450px; background-color: #fff; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); display: flex; flex-direction: column; height: 600px; overflow: hidden; }
+        .chat-header { background-color: #075e54; color: white; padding: 15px; text-align: center; font-weight: bold; font-size: 1.1em; }
+        .chat-history { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; background-image: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png'); }
+        .message { margin-bottom: 12px; padding: 10px 14px; border-radius: 8px; max-width: 75%; word-wrap: break-word; font-size: 0.95em; line-height: 1.4; }
+        .bot { background-color: #fff; align-self: flex-start; box-shadow: 0 1px 1px rgba(0,0,0,0.1); }
+        .user { background-color: #dcf8c6; align-self: flex-end; box-shadow: 0 1px 1px rgba(0,0,0,0.1); }
+        .chat-input { padding: 10px; background-color: #f0f0f0; display: flex; align-items: center; }
+        input { flex: 1; padding: 12px; border: none; border-radius: 20px; outline: none; font-size: 1em; }
+        button { padding: 10px 20px; background-color: #128c7e; color: white; border: none; border-radius: 20px; margin-left: 8px; cursor: pointer; font-weight: bold; }
+        button:hover { background-color: #075e54; }
+        .api-box { padding: 10px; background: #ffeeba; text-align: center; font-size: 0.85em; border-bottom: 1px solid #ffe8a1; }
+        .api-box input { padding: 5px; width: 60%; border: 1px solid #ccc; border-radius: 4px; }
     </style>
 </head>
 <body>
 
 <div class="chat-container">
-    <div class="chat-header">
-        Aman'yň kömekçisi Chatbot
+    <div class="chat-header">Aman'yň AI Kömekçisi</div>
+    
+    <!-- API Açaryny Girizýän Ýer (GitHub-syz gönüden-göni işlemek üçin) -->
+    <div class="api-box">
+        <label>OpenAI API Key: </label>
+        <input id="apiKey" type="password" placeholder="sk-..." value="">
     </div>
+
     <div class="chat-history" id="history">
-        <div class="message bot">Salam! Men siziň kömekçi chat-botuňyz. Size nähili kömek edip bilerin?</div>
+        <div class="message bot">Salam! Men Aman'yň kömekçisi chatbot. Men dünýäniň ähli dillerinde (Türkmençe, Rusça, Iňlisçe, Özbekçe, Türkçe) ýazmaça ýa-da sesli soraglara akylly jogap berip bilýärin. Size nähili kömek edip bilerin?</div>
     </div>
+    
     <div class="chat-input">
-        <input id="input" type="text" placeholder="Habaryňyzy ýazyň...">
+        <input id="input" type="text" placeholder="Soragyňyzy ýazyň ýa-da aýdyň...">
+        <button id="voiceBtn" type="button" style="background-color: #34b7f1; margin-right: 5px;">🎤</button>
         <button id="send">Ugrat</button>
     </div>
 </div>
+
+<script>
+    const input = document.getElementById('input');
+    const sendBtn = document.getElementById('send');
+    const voiceBtn = document.getElementById('voiceBtn');
+    const history = document.getElementById('history');
+    const apiKeyInput = document.getElementById('apiKey');
+
+    // Ses Tanama (Speech to Text) - Islendik dilde gürleseňiz hem tanar
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.interimResults = false;
+
+        voiceBtn.addEventListener('click', () => {
+            voiceBtn.innerText = "🛑";
+            recognition.start();
+        });
+
+        recognition.onresult = (event) => {
+            const transcript = event.results[0][0].transcript;
+            input.value = transcript;
+            voiceBtn.innerText = "🎤";
+        };
+
+        recognition.onerror = () => { voiceBtn.innerText = "🎤"; };
+        recognition.onend = () => { voiceBtn.innerText = "🎤"; };
+    } else {
+        voiceBtn.style.display = 'none'; // Brauzer goldamasa düwme görünmez
+    }
+
+    // Sesi Okama (Text to Speech) - Botuň jogabyny sesli aýtmak üçin
+    function speakText(text, langCode = 'tr-TR') {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = langCode; 
+        window.speechSynthesis.speak(utterance);
+    }
+
+    // Habar Ugratmak we Emeli Aňdan Jogap Almak
+    sendBtn.addEventListener('click', async function() {
+        const text = input.value.trim();
+        const apiKey = apiKeyInput.value.trim();
+
+        if (!apiKey) {
+            alert("Haýyş, ilki bilen OpenAI API açaryňyzy (API Key) giriziň!");
+            return;
+        }
+
+        if (text !== '') {
+            // Ulanyjynyň ýazgysyny ekrana çykarmak
+            appendMessage(text, 'user');
+            input.value = '';
+
+            // Bot "Ýazýar..." garaşma ýagdaýy
+            const loadingMsg = appendMessage('Ýazýar...', 'bot');
+
+            try {
+                // OpenAI API-a gönüden-göni sorag ibermek
+                const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: "gpt-4o-mini", // Soňky çalt we akylly model
+                        messages: [
+                            { role: "system", content: "Sen Aman'yň kömekçisi akylly chatbot. Ulanyjy haýsy dilde (Türkmençe, Rusça, Özbekçe, Türkçe, Iňlisçe) ýazsa ýa-da geplese, şol dilde gaty dogry we düşnükli jogap ber. Yslam dini baradaky soraglara ylmy we anyk çeşmeler esasynda jogap ber." },
+                            { role: "user", content: text }
+                        ]
+                    })
+                });
+
+                const data = await response.json();
+                loadingMsg.remove(); // "Ýazýar..." ýazgysyny aýyrmak
+
+                if (data.choices && data.choices[0]) {
+                    const botReply = data.choices[0].message.content;
+                    appendMessage(botReply, 'bot');
+                    
+                    // Jogaby hem sesli okap berer (Text-to-Speech)
+                    speakText(botReply);
+                } else {
+                    appendMessage("Bagyşlaň, garaşylmadyk ýalňyşlyk ýüze çykdy.", 'bot');
+                }
+
+            } catch (error) {
+                loadingMsg.remove();
+                appendMessage("Serwere birigip bolmady. Internediňizi ýa-da API açaryňyzy barlaň.", 'bot');
+            }
+        }
+    });
+
+    function appendMessage(text, sender) {
+        const msgDiv = document.createElement('div');
+        msgDiv.className = `message ${sender}`;
+        msgDiv.innerText = text;
+        history.appendChild(msgDiv);
+        history.scrollTop = history.scrollHeight;
+        return msgDiv;
+    }
+
+    input.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendBtn.click(); });
+</script>
 
 </body>
 </html>
