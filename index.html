@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EVP Voice Decoder & Text Tracker</title>
+    <title>EVP Ghost Box Decoder</title>
     <style>
         body {
             background-color: #0d0d0d;
@@ -57,7 +57,6 @@
             transition: width 0.05s linear;
         }
 
-        /* Subtitr Gutysy */
         .subtitle-box {
             background-color: #000;
             border: 2px dashed #00ff66;
@@ -114,7 +113,7 @@
 <body>
 
 <div class="box-container">
-    <h1>EVP DECODER & SUBTITLES</h1>
+    <h1>EVP DECODER & GHOST BOX</h1>
     <div class="status" id="status-text">Ulgam ýapyk</div>
     
     <div class="audio-bar-container">
@@ -134,11 +133,10 @@
 
 <script>
     let audioCtx = null;
-    let microphone = null;
     let analyser = null;
     let recognition = null;
     let isListening = false;
-    let liveInterval = null;
+    let noiseNode = null;
 
     const startBtn = document.getElementById('start-btn');
     const statusText = document.getElementById('status-text');
@@ -151,22 +149,29 @@
         return now.toTimeString().split(' ')[0];
     }
 
-    // Sesi Tekste Öwürýän Ulgamy Sazlamak (Speech Recognition)
+    // Telefon sesi aňsat tanar ýaly ak şum (White Noise) döretmek
+    function createWhiteNoise() {
+        const bufferSize = 2 * audioCtx.sampleRate;
+        const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const output = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            output[i] = Math.random() * 2 - 1;
+        }
+        const whiteNoise = audioCtx.createBufferSource();
+        whiteNoise.buffer = noiseBuffer;
+        whiteNoise.loop = true;
+        return whiteNoise;
+    }
+
     function setupSpeechRecognition() {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SpeechRecognition) {
-            alert("Gynansakda, bu brauzer sesi tekste öwürmek tehnologiýasyny goldamaýar. Google Chrome ulanmagyňyz maslahat berilýär.");
-            return null;
-        }
+        if (!SpeechRecognition) return null;
 
         const reco = new SpeechRecognition();
-        reco.continuous = true; // Üznüksiz diňlemek
-        reco.interimResults = true; // Söz aýdylyp durka hakyky wagtda netije görkezmek
-        
-        // Dili sazlamak: Türkmen dili göni goldanylman bilse-de, 'tr-TR' (Türkçe) sebitiň ses öwüşginlerini we meňzeş sözleri gaty gowy okaýar.
-        reco.lang = 'tr-TR'; 
+        reco.continuous = true;
+        reco.interimResults = true;
+        reco.lang = 'tr-TR'; // Sebit dilleri üçin iň gowysy
 
-        // Ses anyklananda işlejek funksiýa
         reco.onresult = (event) => {
             let interimTranscript = '';
             let finalTranscript = '';
@@ -179,14 +184,11 @@
                 }
             }
 
-            // Ekranda subtitry görkezmek
             let currentText = finalTranscript || interimTranscript;
             if (currentText.trim() !== "") {
                 subtitleDisplay.textContent = currentText;
-                subtitleDisplay.style.color = "#00ff66";
             }
 
-            // Eger söz doly gutarsa, ony geçmiş log gutusyna hem ýazýarys
             if (finalTranscript.trim() !== "") {
                 const entry = document.createElement('div');
                 entry.className = 'log-entry';
@@ -196,7 +198,6 @@
             }
         };
 
-        // Eger ses kesilse awtomatiki täzeden başlar ýaly etmek
         reco.onend = () => {
             if (isListening) reco.start();
         };
@@ -204,11 +205,10 @@
         return reco;
     }
 
-    // Knopka basylanda amala aşjak işler
     startBtn.addEventListener('click', async () => {
         if (isListening) {
-            // Ulgamy ýapmak
             isListening = false;
+            if (noiseNode) noiseNode.stop();
             if (audioCtx) audioCtx.close();
             if (recognition) recognition.stop();
             
@@ -220,32 +220,33 @@
         }
 
         try {
-            // Mikrafon rugsady
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            
-            // 1. Audio Analizatory Işledýäris (Ýaşyl zolak üçin)
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // 1. Ak Şumy Işletmek (Fonda radio sesi çykar)
+            noiseNode = createWhiteNoise();
+            const noiseGain = audioCtx.createGain();
+            noiseGain.gain.setValueAtTime(0.15, audioCtx.currentTime); // Sesiň gatylygy (0.15 pesräk şum)
+            noiseNode.connect(noiseGain);
+            noiseGain.connect(audioCtx.destination);
+            noiseNode.start();
+
+            // 2. Mikrafon Analizatory
             analyser = audioCtx.createAnalyser();
-            microphone = audioCtx.createMediaStreamSource(stream);
+            const microphone = audioCtx.createMediaStreamSource(stream);
             analyser.fftSize = 256;
             const bufferLength = analyser.frequencyBinCount;
             const dataArray = new Uint8Array(bufferLength);
             microphone.connect(analyser);
 
-            // 2. Sesi Tekste Öwürjini Işledýäris (Subtitr üçin)
-            if (!recognition) {
-                recognition = setupSpeechRecognition();
-            }
-            
-            if (recognition) {
-                recognition.start();
-            }
+            // 3. Ses Tanama
+            if (!recognition) recognition = setupSpeechRecognition();
+            if (recognition) recognition.start();
 
             isListening = true;
             startBtn.textContent = "DIŇLEMÄNI DURUZ";
-            statusText.textContent = "Mikrafon we Dekoder işläp dur...";
+            statusText.textContent = "Ghost Box we Dekoder işläp dur...";
 
-            // Ýaşyl zolagy hakyky wagtda nurlandyrmak
             function drawVolume() {
                 if (!isListening) return;
                 analyser.getByteFrequencyData(dataArray);
@@ -268,4 +269,3 @@
 
 </body>
 </html>
-
