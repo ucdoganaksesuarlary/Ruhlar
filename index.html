@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="tk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EVP Voice Decoder & Text Tracker</title>
+    <style>
+        body {
+            background-color: #0d0d0d;
+            color: #00ff66;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .box-container {
+            border: 2px solid #00ff66;
+            padding: 30px;
+            background: #1a1a1a;
+            box-shadow: 0 0 20px rgba(0, 255, 102, 0.2);
+            border-radius: 10px;
+            text-align: center;
+            width: 400px;
+        }
+
+        h1 {
+            font-size: 1.3rem;
+            margin-bottom: 20px;
+            text-shadow: 0 0 5px #00ff66;
+        }
+
+        .status {
+            font-size: 0.9rem;
+            color: #888;
+            margin-bottom: 15px;
+        }
+
+        .audio-bar-container {
+            width: 100%;
+            height: 15px;
+            background-color: #000;
+            border: 1px solid #00ff66;
+            margin-bottom: 20px;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .audio-bar {
+            height: 100%;
+            width: 0%;
+            background-color: #00ff66;
+            transition: width 0.05s linear;
+        }
+
+        /* Subtitr Gutysy */
+        .subtitle-box {
+            background-color: #000;
+            border: 2px dashed #00ff66;
+            min-height: 60px;
+            margin-bottom: 20px;
+            padding: 15px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-shadow: 0 0 4px #00ff66;
+        }
+
+        .log-box {
+            background-color: #000;
+            border: 1px solid #00ff66;
+            height: 120px;
+            overflow-y: auto;
+            text-align: left;
+            padding: 10px;
+            font-size: 0.85rem;
+            color: #00ff66;
+        }
+
+        .log-entry {
+            margin-bottom: 5px;
+            border-bottom: 1px dotted #333;
+            padding-bottom: 2px;
+        }
+
+        .btn {
+            background: transparent;
+            border: 2px solid #00ff66;
+            color: #00ff66;
+            padding: 12px;
+            font-size: 1rem;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+            border-radius: 5px;
+            width: 100%;
+            margin-bottom: 15px;
+        }
+
+        .btn:hover {
+            background: #00ff66;
+            color: #000;
+            box-shadow: 0 0 10px #00ff66;
+        }
+    </style>
+</head>
+<body>
+
+<div class="box-container">
+    <h1>EVP DECODER & SUBTITLES</h1>
+    <div class="status" id="status-text">Ulgam ýapyk</div>
+    
+    <div class="audio-bar-container">
+        <div class="audio-bar" id="live-bar"></div>
+    </div>
+
+    <div style="text-align: left; margin-bottom: 5px; font-size: 0.9rem;">Häzirki Subtitr (Live):</div>
+    <div class="subtitle-box" id="subtitle-display">... Ses garaşylýar ...</div>
+
+    <button class="btn" id="start-btn">DIŇLEMÄNI BAŞLAT</button>
+
+    <div style="text-align: left; margin-bottom: 5px; font-size: 0.9rem;">Geçmiş Ýazgylar (Log):</div>
+    <div class="log-box" id="log-container">
+        <div class="log-entry">[Ulgam taýýar.]</div>
+    </div>
+</div>
+
+<script>
+    let audioCtx = null;
+    let microphone = null;
+    let analyser = null;
+    let recognition = null;
+    let isListening = false;
+    let liveInterval = null;
+
+    const startBtn = document.getElementById('start-btn');
+    const statusText = document.getElementById('status-text');
+    const liveBar = document.getElementById('live-bar');
+    const subtitleDisplay = document.getElementById('subtitle-display');
+    const logContainer = document.getElementById('log-container');
+
+    function getTimeString() {
+        const now = new Date();
+        return now.toTimeString().split(' ')[0];
+    }
+
+    // Sesi Tekste Öwürýän Ulgamy Sazlamak (Speech Recognition)
+    function setupSpeechRecognition() {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            alert("Gynansakda, bu brauzer sesi tekste öwürmek tehnologiýasyny goldamaýar. Google Chrome ulanmagyňyz maslahat berilýär.");
+            return null;
+        }
+
+        const reco = new SpeechRecognition();
+        reco.continuous = true; // Üznüksiz diňlemek
+        reco.interimResults = true; // Söz aýdylyp durka hakyky wagtda netije görkezmek
+        
+        // Dili sazlamak: Türkmen dili göni goldanylman bilse-de, 'tr-TR' (Türkçe) sebitiň ses öwüşginlerini we meňzeş sözleri gaty gowy okaýar.
+        reco.lang = 'tr-TR'; 
+
+        // Ses anyklananda işlejek funksiýa
+        reco.onresult = (event) => {
+            let interimTranscript = '';
+            let finalTranscript = '';
+
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                if (event.results[i].isFinal) {
+                    finalTranscript += event.results[i][0].transcript;
+                } else {
+                    interimTranscript += event.results[i][0].transcript;
+                }
+            }
+
+            // Ekranda subtitry görkezmek
+            let currentText = finalTranscript || interimTranscript;
+            if (currentText.trim() !== "") {
+                subtitleDisplay.textContent = currentText;
+                subtitleDisplay.style.color = "#00ff66";
+            }
+
+            // Eger söz doly gutarsa, ony geçmiş log gutusyna hem ýazýarys
+            if (finalTranscript.trim() !== "") {
+                const entry = document.createElement('div');
+                entry.className = 'log-entry';
+                entry.innerHTML = `[${getTimeString()}] Ýazgy: "${finalTranscript}"`;
+                logContainer.appendChild(entry);
+                logContainer.scrollTop = logContainer.scrollHeight;
+            }
+        };
+
+        // Eger ses kesilse awtomatiki täzeden başlar ýaly etmek
+        reco.onend = () => {
+            if (isListening) reco.start();
+        };
+
+        return reco;
+    }
+
+    // Knopka basylanda amala aşjak işler
+    startBtn.addEventListener('click', async () => {
+        if (isListening) {
+            // Ulgamy ýapmak
+            isListening = false;
+            if (audioCtx) audioCtx.close();
+            if (recognition) recognition.stop();
+            
+            startBtn.textContent = "DIŇLEMÄNI BAŞLAT";
+            statusText.textContent = "Ulgam duruzyldy.";
+            subtitleDisplay.textContent = "... Ses garaşylýar ...";
+            liveBar.style.width = "0%";
+            return;
+        }
+
+        try {
+            // Mikrafon rugsady
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            
+            // 1. Audio Analizatory Işledýäris (Ýaşyl zolak üçin)
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioCtx.createAnalyser();
+            microphone = audioCtx.createMediaStreamSource(stream);
+            analyser.fftSize = 256;
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            microphone.connect(analyser);
+
+            // 2. Sesi Tekste Öwürjini Işledýäris (Subtitr üçin)
+            if (!recognition) {
+                recognition = setupSpeechRecognition();
+            }
+            
+            if (recognition) {
+                recognition.start();
+            }
+
+            isListening = true;
+            startBtn.textContent = "DIŇLEMÄNI DURUZ";
+            statusText.textContent = "Mikrafon we Dekoder işläp dur...";
+
+            // Ýaşyl zolagy hakyky wagtda nurlandyrmak
+            function drawVolume() {
+                if (!isListening) return;
+                analyser.getByteFrequencyData(dataArray);
+                let total = 0;
+                for (let i = 0; i < bufferLength; i++) {
+                    total += dataArray[i];
+                }
+                let average = total / bufferLength;
+                liveBar.style.width = (average * 2.5) + "%";
+                requestAnimationFrame(drawVolume);
+            }
+            drawVolume();
+
+        } catch (err) {
+            console.error(err);
+            statusText.textContent = "Mikrafon rugsady berilmedi!";
+        }
+    });
+</script>
+
+</body>
+</html>
+
